@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 
 const ArrowLeft = () => (
@@ -42,7 +44,14 @@ const GoogleIcon = () => (
 );
 
 export default function AuthPage() {
-  const { signInWithGoogle, loading } = useAuth();
+  const { user, signInWithGoogle, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace("/dashboard");
+    }
+  }, [user, loading, router]);
 
   return (
     <main className="min-h-screen bg-black flex items-center justify-center px-6">
