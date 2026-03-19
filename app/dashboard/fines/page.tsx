@@ -173,7 +173,7 @@ export default function FinesPage() {
   const grandTotal = data.reduce((s, d) => s + d.totalAmount, 0);
 
   return (
-    <div className="max-w-5xl mx-auto px-6 pt-24 pb-16 flex flex-col gap-8"
+    <div className="max-w-5xl mx-auto px-4 md:px-6 pt-20 md:pt-24 pb-16 flex flex-col gap-6 md:gap-8"
       style={{ animation: "fadeIn 0.5s ease-out" }}>
 
       {/* Header */}
@@ -325,7 +325,7 @@ export default function FinesPage() {
               .sort((a, b) => new Date(b.week_start).getTime() - new Date(a.week_start).getTime())
               .map(f => (
                 <div key={f.id}
-                  className="flex items-center gap-3 rounded-xl bg-gray-800/30 border border-gray-800/40 px-4 py-2.5">
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-gray-800/30 border border-gray-800/40 px-4 py-2.5">
                   <div className="w-2 h-2 rounded-full shrink-0" style={{ background: f.color }} />
                   <Avatar user={f.user} size={22} />
                   <span className="text-sm text-white flex-1 truncate">{displayName(f.user)}</span>

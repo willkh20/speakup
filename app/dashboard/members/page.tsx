@@ -55,7 +55,7 @@ export default function MembersPage() {
   const sel = stats.find(s => s.user.id === selected);
 
   return (
-    <div className="max-w-7xl mx-auto px-6 pt-24 pb-16 flex flex-col gap-8"
+    <div className="max-w-7xl mx-auto px-4 md:px-6 pt-20 md:pt-24 pb-16 flex flex-col gap-6 md:gap-8"
       style={{ animation: "fadeIn 0.5s ease-out" }}>
 
       <div>
@@ -74,7 +74,7 @@ export default function MembersPage() {
             <div key={i} className="w-20 h-24 rounded-2xl bg-gray-800/60 animate-pulse" />
           )}</div>
         ) : (
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-3 md:grid-cols-4 gap-3 md:gap-4">
             {stats.map(s => (
               <button key={s.user.id} type="button" onClick={() => setSelected(s.user.id)}
                 className={`flex flex-col items-center gap-2 py-5 px-3 rounded-2xl border transition-all hover:scale-105 active:scale-95
@@ -121,7 +121,7 @@ export default function MembersPage() {
           </div>
 
           {/* Stats grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          <div className="grid grid-cols-2 gap-3 mb-6">
             {[
               { label: "This Week",     value: `${sel.weekCount}` },
               { label: "Weekly Goal",   value: `${sel.weekCount}/${sel.user.weekly_goal}` },

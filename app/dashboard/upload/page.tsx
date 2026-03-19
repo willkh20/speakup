@@ -365,11 +365,11 @@ export default function UploadPage() {
   const selMissed      = members.filter(m => !selUploaderIds.has(m.id));
 
   return (
-    <div className="max-w-7xl mx-auto px-6 pt-24 pb-16 flex flex-col gap-8"
+    <div className="max-w-7xl mx-auto px-4 md:px-6 pt-20 md:pt-24 pb-16 flex flex-col gap-6 md:gap-8"
       style={{ animation: "fadeIn 0.5s ease-out" }}>
 
       {/* Header */}
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex items-start md:items-end justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-3xl font-bold" style={GRADIENT_TEXT}>Upload</h1>
           <p className="text-sm mt-1" style={{ color: "#6b7280" }}>Share your English speaking recording for today</p>
@@ -409,7 +409,7 @@ export default function UploadPage() {
         {members.length === 0 ? (
           <p className="text-center py-8 text-sm" style={{ color: "#4b5563" }}>No members yet</p>
         ) : (
-          <div className="grid sm:grid-cols-2 gap-3">
+          <div className="flex flex-col sm:grid sm:grid-cols-2 gap-3">
             {todayJoined.map(m => {
               const vid = todayVidByUser.get(m.id);
               const dur = vid ? fmtDuration(vid.duration_seconds) : null;
@@ -495,7 +495,7 @@ export default function UploadPage() {
           ))}
         </div>
 
-        <div className="grid grid-cols-7 gap-1.5">
+        <div className="grid grid-cols-7 gap-0.5 md:gap-1.5">
           {calDays.map((d, i) => {
             if (!d) return <div key={`e${i}`} />;
             const dateStr = localDateStr(d);
@@ -547,7 +547,7 @@ export default function UploadPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4"
           style={{ animation: "fadeIn 0.15s ease-out" }}>
           <div className="fixed inset-0 bg-black/75 backdrop-blur-sm" onClick={() => setModalOpen(false)} />
-          <div className="relative w-full max-w-2xl rounded-2xl border border-gray-700/60 bg-gray-950 shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
+          <div className="relative w-full max-w-2xl rounded-2xl border border-gray-700/60 bg-gray-950 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] md:max-h-[85vh]"
             style={{ animation: "slideDown 0.2s ease-out" }}>
 
             <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-800/60">

@@ -96,9 +96,13 @@ export default function HomePage() {
   // Re-fetch when tab regains focus so ratings set on upload page are visible
   useEffect(() => {
     const onFocus = () => fetchData();
+    const onVisibility = () => { if (!document.hidden) fetchData(); };
     window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", () => { if (!document.hidden) fetchData(); });
-    return () => window.removeEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [fetchData]);
 
   const fmtTime = (s: number) => { if (!isFinite(s)) return "0:00"; return `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,"0")}`; };
@@ -132,7 +136,7 @@ export default function HomePage() {
   const dayIndex    = weekDays.findIndex((d: Date) => localDateStr(d) === today);
 
   return (
-    <div className="max-w-7xl mx-auto px-6 pt-24 pb-16 flex flex-col gap-8"
+    <div className="max-w-7xl mx-auto px-4 md:px-6 pt-20 md:pt-24 pb-16 flex flex-col gap-6 md:gap-8"
       style={{ animation: "fadeIn 0.5s ease-out" }}>
 
       {/* ── Today's Topic ─────────────────────────────────────────────── */}
@@ -164,7 +168,7 @@ export default function HomePage() {
           </div>
         )}
 
-        <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-6">
+        <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6">
           <div>
             <p className={`${SECTION_LABEL} mb-1`}>Next topic in</p>
             <Countdown />
@@ -299,12 +303,12 @@ export default function HomePage() {
       </div>
 
       {/* ── Weekly Calendar ──────────────────────────────────────────────── */}
-      <section className={`${CARD} p-6`}>
-        <div className="flex items-center gap-2 mb-5">
+      <section className={`${CARD} p-4 md:p-6`}>
+        <div className="flex items-center gap-2 mb-4 md:mb-5">
           <span className="w-2 h-2 rounded-full" style={{ background: ACCENT_MID ?? ACCENT }} />
           <span className={SECTION_LABEL}>Weekly Calendar</span>
         </div>
-        <div className="grid grid-cols-7 gap-3">
+        <div className="grid grid-cols-7 gap-1 md:gap-3">
           {weekDays.map((d: Date, i: number) => {
             const dateStr = localDateStr(d);
             const isToday = dateStr === today;
