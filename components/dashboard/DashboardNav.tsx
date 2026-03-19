@@ -31,6 +31,7 @@ const tabs = [
   { label: "Members", href: "/dashboard/members" },
   { label: "Fines",   href: "/dashboard/fines"   },
 ];
+const adminTab = { label: "Admin", href: "/dashboard/admin" };
 
 const Logo = () => (
   <span className="text-xl font-black tracking-tight select-none"
@@ -240,12 +241,14 @@ export default function DashboardNav() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [myProfile,   setMyProfile]   = useState<UserProfile | null>(null);
 
-  // Load profile for nav display name
+  // Load profile for nav display name + admin status
   useEffect(() => {
     if (!user) return;
     supabase.from("users").select("*").eq("id", user.id).single()
       .then(({ data }) => { if (data) setMyProfile(data as UserProfile); });
   }, [user, profileOpen]); // re-fetch after panel closes
+
+  const allTabs = myProfile?.is_admin ? [...tabs, adminTab] : tabs;
 
   const name = myProfile ? displayName(myProfile)
     : (user?.user_metadata?.full_name as string | undefined)?.split(" ")[0]
@@ -265,7 +268,7 @@ export default function DashboardNav() {
 
             {/* Center tabs — desktop */}
             <div className="hidden md:flex items-center gap-1 absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-              {tabs.map(t => {
+              {allTabs.map(t => {
                 const active = pathname === t.href;
                 return (
                   <Link key={t.href} href={t.href}
@@ -317,7 +320,7 @@ export default function DashboardNav() {
           <div className="md:hidden bg-black/95 backdrop-blur-md border-t border-gray-800/50"
             style={{ animation: "slideDown 0.25s ease-out" }}>
             <div className="px-6 py-4 flex flex-col gap-1">
-              {tabs.map(t => {
+              {allTabs.map(t => {
                 const active = pathname === t.href;
                 return (
                   <Link key={t.href} href={t.href} onClick={() => setMobileOpen(false)}
