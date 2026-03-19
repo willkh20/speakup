@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 
 const ArrowLeft = () => (
@@ -43,9 +43,19 @@ const GoogleIcon = () => (
   </svg>
 );
 
+function useIsInAppBrowser() {
+  const [isInApp, setIsInApp] = useState(false);
+  useEffect(() => {
+    const ua = navigator.userAgent;
+    setIsInApp(/KAKAOTALK|Instagram|NAVER|Line|FB_IAB|FB4A|FBAN|Twitter/i.test(ua));
+  }, []);
+  return isInApp;
+}
+
 export default function AuthPage() {
   const { user, signInWithGoogle, loading } = useAuth();
   const router = useRouter();
+  const isInApp = useIsInAppBrowser();
 
   useEffect(() => {
     if (!loading && user) {
@@ -105,6 +115,19 @@ export default function AuthPage() {
 
           {/* Divider */}
           <div className="w-full h-px bg-gray-800" />
+
+          {/* In-app browser warning */}
+          {isInApp && (
+            <div className="w-full rounded-xl border border-amber-400/30 bg-amber-400/8 px-4 py-3 flex flex-col gap-1.5">
+              <p className="text-xs font-bold text-amber-400">⚠️ 앱 내 브라우저 감지</p>
+              <p className="text-xs text-amber-300/80 leading-relaxed">
+                카카오톡·인스타그램 등 앱 내 브라우저에서는 Google 로그인이 차단됩니다.
+              </p>
+              <p className="text-xs font-semibold text-white mt-0.5">
+                링크를 복사해서 <span className="text-amber-400">Chrome / Safari</span> 에서 열어주세요.
+              </p>
+            </div>
+          )}
 
           {/* Google button */}
           <button
