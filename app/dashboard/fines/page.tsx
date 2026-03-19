@@ -147,7 +147,7 @@ export default function FinesPage() {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     const [{ data: u }, { data: f }] = await Promise.all([
-      supabase.from("users").select("*").order("created_at"),
+      supabase.from("users").select("*").eq("status", "approved").order("created_at"),
       supabase.from("fines").select("*"),
     ]);
     const users = (u as UserProfile[]) ?? [];

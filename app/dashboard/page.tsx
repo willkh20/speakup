@@ -74,7 +74,7 @@ export default function HomePage() {
     setLoading(true);
     const weekStart = weekStartKST();
     const [{ data: u }, { data: v }] = await Promise.all([
-      supabase.from("users").select("*").order("created_at"),
+      supabase.from("users").select("*").eq("status", "approved").order("created_at"),
       supabase.from("videos").select("*, users(*)").gte("recorded_date", weekStart),
     ]);
     const allVids = (v as Video[]) ?? [];

@@ -32,7 +32,7 @@ export default function MembersPage() {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     const [{ data: u }, { data: v }, { data: f }] = await Promise.all([
-      supabase.from("users").select("*").order("created_at"),
+      supabase.from("users").select("*").eq("status", "approved").order("created_at"),
       supabase.from("videos").select("user_id, recorded_date"),
       supabase.from("fines").select("*"),
     ]);

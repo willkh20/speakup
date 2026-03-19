@@ -209,7 +209,7 @@ export default function UploadPage() {
   const [savingRating,  setSavingRating]  = useState(false);
 
   const fetchMembers = useCallback(async () => {
-    const { data } = await supabase.from("users").select("*").order("created_at");
+    const { data } = await supabase.from("users").select("*").eq("status", "approved").order("created_at");
     setMembers((data as UserProfile[]) ?? []);
   }, []);
 
