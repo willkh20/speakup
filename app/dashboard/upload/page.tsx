@@ -46,6 +46,56 @@ function Avatar({ user, size = 28 }: { user: UserProfile; size?: number }) {
   );
 }
 
+function SeekBar({ currentTime, duration, audioRef }: {
+  currentTime: number; duration: number; audioRef: React.RefObject<HTMLAudioElement | null>;
+}) {
+  const barRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+  const pct = duration > 0 && isFinite(duration) ? Math.min((currentTime / duration) * 100, 100) : 0;
+
+  const seekToX = (clientX: number) => {
+    if (!barRef.current || !audioRef.current || !duration || !isFinite(duration)) return;
+    const rect = barRef.current.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    audioRef.current.currentTime = ratio * duration;
+  };
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    dragging.current = true;
+    barRef.current?.setPointerCapture(e.pointerId);
+    seekToX(e.clientX);
+  };
+  const onPointerMove = (e: React.PointerEvent) => { if (dragging.current) seekToX(e.clientX); };
+  const onPointerUp   = () => { dragging.current = false; };
+
+  const fmt = (s: number) => {
+    if (!isFinite(s) || isNaN(s) || s < 0) return "0:00";
+    return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  };
+  const remaining = duration > 0 && isFinite(duration) ? duration - currentTime : 0;
+
+  return (
+    <div className="flex-1 flex flex-col gap-1.5">
+      <div ref={barRef}
+        className="relative h-2 rounded-full bg-gray-800 cursor-pointer touch-none"
+        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerLeave={onPointerUp}>
+        {/* Fill */}
+        <div className="absolute inset-y-0 left-0 rounded-full"
+          style={{ width: `${pct}%`, background: "linear-gradient(90deg,#f59e0b,#fbbf24)", transition: dragging.current ? "none" : "width 0.1s linear" }} />
+        {/* Thumb */}
+        {pct > 0 && (
+          <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow-md border border-yellow-300/60 pointer-events-none"
+            style={{ left: `calc(${pct}% - 6px)` }} />
+        )}
+      </div>
+      <div className="flex justify-between text-[10px]" style={{ color: "#6b7280" }}>
+        <span className="font-medium text-yellow-500/80">{fmt(currentTime)}</span>
+        <span>−{fmt(remaining)}</span>
+      </div>
+    </div>
+  );
+}
+
 function AudioCard({ video, publicUrl, currentUserId, today, onDelete }: {
   video: Video; publicUrl: string; currentUserId?: string; today: string; onDelete?: () => void;
 }) {
@@ -74,19 +124,14 @@ function AudioCard({ video, publicUrl, currentUserId, today, onDelete }: {
     else { try { await ref.current.play(); setPlaying(true); } catch { setPlaying(false); } }
   };
 
-  const formatTime = (s: number) => {
-    if (!isFinite(s)) return "0:00";
-    const m = Math.floor(s / 60);
-    return `${m}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
-  };
-
-  const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const setDur = (d: number) => { if (isFinite(d) && d > 0) setDuration(d); };
 
   return (
     <div className="rounded-xl border border-gray-800/60 bg-gray-900/50 p-4 flex flex-col gap-3">
       <audio ref={ref} src={publicUrl} preload="metadata"
         onTimeUpdate={() => setCurrentTime(ref.current?.currentTime ?? 0)}
-        onLoadedMetadata={() => setDuration(ref.current?.duration ?? 0)}
+        onLoadedMetadata={() => setDur(ref.current?.duration ?? 0)}
+        onDurationChange={() => setDur(ref.current?.duration ?? 0)}
         onEnded={() => { setPlaying(false); setCurrentTime(0); }} />
 
       {/* User row */}
@@ -145,31 +190,14 @@ function AudioCard({ video, publicUrl, currentUserId, today, onDelete }: {
       {/* Player */}
       <div className="flex items-center gap-3">
         <button type="button" onClick={toggle}
-          className="w-9 h-9 rounded-full border border-gray-700/60 bg-gray-800/60 hover:border-violet-400/50 hover:bg-violet-400/10 flex items-center justify-center transition-all shrink-0">
+          className="w-9 h-9 rounded-full border border-gray-700/60 bg-gray-800/60 hover:border-yellow-400/50 hover:bg-yellow-400/10 flex items-center justify-center transition-all shrink-0">
           {playing ? (
             <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
           ) : (
             <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           )}
         </button>
-
-        {/* Progress bar */}
-        <div className="flex-1 flex flex-col gap-1">
-          <div className="relative h-1.5 rounded-full bg-gray-800 cursor-pointer"
-            onClick={(e) => {
-              if (!ref.current || !duration) return;
-              const rect = e.currentTarget.getBoundingClientRect();
-              const ratio = (e.clientX - rect.left) / rect.width;
-              ref.current.currentTime = ratio * duration;
-            }}>
-            <div className="absolute inset-y-0 left-0 rounded-full transition-all"
-              style={{ width: `${pct}%`, background: "linear-gradient(90deg, #a78bfa, #e879f9)" }} />
-          </div>
-          <div className="flex justify-between text-[10px]" style={{ color: "#4b5563" }}>
-            <span>{formatTime(currentTime)}</span>
-            <span>{formatTime(duration)}</span>
-          </div>
-        </div>
+        <SeekBar currentTime={currentTime} duration={duration} audioRef={ref} />
       </div>
     </div>
   );
@@ -749,7 +777,8 @@ export default function UploadPage() {
               style={{ animation: "slideDown 0.2s ease-out" }}>
               <audio ref={uploadAudioRef} src={url} preload="metadata"
                 onTimeUpdate={() => setUploadAudioTime(uploadAudioRef.current?.currentTime ?? 0)}
-                onLoadedMetadata={() => setUploadAudioDur(uploadAudioRef.current?.duration ?? 0)}
+                onLoadedMetadata={() => { const d = uploadAudioRef.current?.duration ?? 0; if (isFinite(d) && d > 0) setUploadAudioDur(d); }}
+                onDurationChange={() => { const d = uploadAudioRef.current?.duration ?? 0; if (isFinite(d) && d > 0) setUploadAudioDur(d); }}
                 onEnded={() => setUploadAudioPlaying(false)} />
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -768,19 +797,7 @@ export default function UploadPage() {
                   </svg>
                 </button>
               </div>
-              <div className="relative h-1.5 rounded-full bg-gray-800 cursor-pointer"
-                onClick={e => {
-                  if (!uploadAudioRef.current || !uploadAudioDur) return;
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  uploadAudioRef.current.currentTime = ((e.clientX - rect.left) / rect.width) * uploadAudioDur;
-                }}>
-                <div className="absolute inset-y-0 left-0 rounded-full transition-all"
-                  style={{ width: `${pct}%`, background: "linear-gradient(90deg,#a78bfa,#e879f9)" }} />
-              </div>
-              <div className="flex justify-between text-[11px]" style={{ color: "#4b5563" }}>
-                <span>{fmtTime(uploadAudioTime)}</span>
-                <span>{fmtTime(uploadAudioDur)}</span>
-              </div>
+              <SeekBar currentTime={uploadAudioTime} duration={uploadAudioDur} audioRef={uploadAudioRef} />
               <div className="flex items-center justify-center gap-4">
                 <button type="button" onClick={() => { if (uploadAudioRef.current) uploadAudioRef.current.currentTime = Math.max(0, uploadAudioTime - 10); }}
                   className="text-gray-500 hover:text-white transition-colors text-xs">−10s</button>
@@ -790,7 +807,7 @@ export default function UploadPage() {
                     if (uploadAudioPlaying) { uploadAudioRef.current.pause(); setUploadAudioPlaying(false); }
                     else { await uploadAudioRef.current.play(); setUploadAudioPlaying(true); }
                   }}
-                  className="w-12 h-12 rounded-full flex items-center justify-center border border-violet-400/30 bg-violet-400/10 hover:bg-violet-400/20 transition-all">
+                  className="w-12 h-12 rounded-full flex items-center justify-center border border-yellow-400/30 bg-yellow-400/10 hover:bg-yellow-400/20 transition-all">
                   {uploadAudioPlaying
                     ? <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
                     : <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
@@ -878,9 +895,10 @@ export default function UploadPage() {
             {recState === "done" && recUrl && (
               <>
                 {/* Preview player */}
-                <audio ref={recAudioRef} src={recUrl} preload="metadata"
+                <audio ref={recAudioRef} src={recUrl} preload="auto"
                   onTimeUpdate={() => setRecAudioTime(recAudioRef.current?.currentTime ?? 0)}
-                  onLoadedMetadata={() => setRecAudioDur(recAudioRef.current?.duration ?? 0)}
+                  onLoadedMetadata={() => { const d = recAudioRef.current?.duration ?? 0; if (isFinite(d) && d > 0) setRecAudioDur(d); }}
+                  onDurationChange={() => { const d = recAudioRef.current?.duration ?? 0; if (isFinite(d) && d > 0) setRecAudioDur(d); }}
                   onEnded={() => setRecPlaying(false)} />
                 <div className="w-full flex flex-col gap-3 rounded-xl border border-gray-800 bg-gray-900/50 p-4">
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Preview</p>
@@ -891,26 +909,12 @@ export default function UploadPage() {
                         if (recPlaying) { recAudioRef.current.pause(); setRecPlaying(false); }
                         else { await recAudioRef.current.play(); setRecPlaying(true); }
                       }}
-                      className="w-9 h-9 rounded-full border border-gray-700 bg-gray-800 hover:border-violet-400/50 hover:bg-violet-400/10 flex items-center justify-center transition-all shrink-0">
+                      className="w-9 h-9 rounded-full border border-gray-700 bg-gray-800 hover:border-yellow-400/50 hover:bg-yellow-400/10 flex items-center justify-center transition-all shrink-0">
                       {recPlaying
                         ? <svg width="12" height="12" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
                         : <svg width="12" height="12" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>}
                     </button>
-                    <div className="flex-1 flex flex-col gap-1">
-                      <div className="relative h-1.5 rounded-full bg-gray-800 cursor-pointer"
-                        onClick={e => {
-                          if (!recAudioRef.current || !recAudioDur) return;
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          recAudioRef.current.currentTime = ((e.clientX - rect.left) / rect.width) * recAudioDur;
-                        }}>
-                        <div className="absolute inset-y-0 left-0 rounded-full transition-all"
-                          style={{ width: `${recAudioDur > 0 ? (recAudioTime / recAudioDur) * 100 : 0}%`, background: "linear-gradient(90deg,#a78bfa,#e879f9)" }} />
-                      </div>
-                      <div className="flex justify-between text-[10px] text-gray-600">
-                        <span>{fmtRecTime(Math.floor(recAudioTime))}</span>
-                        <span>{fmtRecTime(Math.floor(recAudioDur))}</span>
-                      </div>
-                    </div>
+                    <SeekBar currentTime={recAudioTime} duration={recAudioDur} audioRef={recAudioRef} />
                   </div>
                 </div>
                 <div className="flex gap-3 w-full">
