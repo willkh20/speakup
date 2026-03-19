@@ -222,7 +222,7 @@ const Hero = React.memo(() => {
       </p>
 
       {/* CTA */}
-      <div className="flex items-center gap-4 relative z-10 mb-16">
+      <div className="flex justify-center relative z-10 mb-16">
         <Link href="/auth">
           <Button
             type="button"
@@ -234,15 +234,6 @@ const Hero = React.memo(() => {
             Get Started
           </Button>
         </Link>
-        <Button
-          type="button"
-          variant="ghost"
-          size="lg"
-          className="rounded-lg"
-          aria-label="View leaderboard"
-        >
-          View Rankings
-        </Button>
       </div>
 
       {/* Dashboard Preview */}

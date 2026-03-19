@@ -49,9 +49,11 @@ const Navigation = React.memo(() => {
           <div className="text-xl font-semibold text-white">Speak Up</div>
 
           <div className="hidden md:flex items-center gap-4">
-            <Button type="button" variant="ghost" size="sm">
-              Sign In
-            </Button>
+            <Link href="/auth">
+              <Button type="button" variant="ghost" size="sm">
+                Sign In
+              </Button>
+            </Link>
             <Link href="/auth">
               <Button type="button" variant="default" size="sm">
                 Get Started
@@ -73,9 +75,11 @@ const Navigation = React.memo(() => {
       {mobileMenuOpen && (
         <div className="md:hidden bg-black/95 backdrop-blur-md border-t border-gray-800/50 animate-[slideDown_0.3s_ease-out]">
           <div className="px-6 py-4 flex flex-col gap-2 pt-4">
-            <Button type="button" variant="ghost" size="sm" onClick={() => setMobileMenuOpen(false)}>
-              Sign In
-            </Button>
+            <Link href="/auth">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setMobileMenuOpen(false)}>
+                Sign In
+              </Button>
+            </Link>
             <Link href="/auth">
               <Button type="button" variant="default" size="sm" onClick={() => setMobileMenuOpen(false)}>
                 Get Started
