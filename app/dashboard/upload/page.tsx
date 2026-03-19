@@ -209,6 +209,114 @@ export default function UploadPage() {
   const [selectedStar,  setSelectedStar]  = useState(0);
   const [savingRating,  setSavingRating]  = useState(false);
 
+  // Recording
+  const [showRecorder, setShowRecorder] = useState(false);
+  const [recState, setRecState]         = useState<"idle" | "recording" | "paused" | "done">("idle");
+  const [recTime,  setRecTime]          = useState(0);
+  const [recBlob,  setRecBlob]          = useState<Blob | null>(null);
+  const [recUrl,   setRecUrl]           = useState<string | null>(null);
+  const recTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mediaRecRef  = useRef<MediaRecorder | null>(null);
+  const chunksRef    = useRef<Blob[]>([]);
+  const streamRef    = useRef<MediaStream | null>(null);
+  const recAudioRef  = useRef<HTMLAudioElement>(null);
+  const [recPlaying, setRecPlaying] = useState(false);
+  const [recAudioTime, setRecAudioTime] = useState(0);
+  const [recAudioDur,  setRecAudioDur]  = useState(0);
+
+  const fmtRecTime = (s: number) =>
+    `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+
+  const closeRecorder = () => {
+    if (recTimerRef.current) clearInterval(recTimerRef.current);
+    mediaRecRef.current?.state !== "inactive" && mediaRecRef.current?.stop();
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    if (recUrl) URL.revokeObjectURL(recUrl);
+    setShowRecorder(false);
+    setRecState("idle");
+    setRecTime(0);
+    setRecBlob(null);
+    setRecUrl(null);
+    setRecPlaying(false);
+    setRecAudioTime(0);
+    setRecAudioDur(0);
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      chunksRef.current = [];
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/mp4")
+          ? "audio/mp4"
+          : "";
+      const mr = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      mediaRecRef.current = mr;
+      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      mr.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: mimeType || "audio/webm" });
+        setRecBlob(blob);
+        setRecUrl(URL.createObjectURL(blob));
+        setRecState("done");
+        streamRef.current?.getTracks().forEach(t => t.stop());
+      };
+      mr.start(100);
+      setRecState("recording");
+      setRecTime(0);
+      recTimerRef.current = setInterval(() => setRecTime(t => t + 1), 1000);
+    } catch {
+      alert("마이크 접근 권한이 필요합니다. 브라우저 설정에서 마이크를 허용해주세요.");
+    }
+  };
+
+  const pauseResume = () => {
+    if (!mediaRecRef.current) return;
+    if (recState === "recording") {
+      mediaRecRef.current.pause();
+      if (recTimerRef.current) clearInterval(recTimerRef.current);
+      setRecState("paused");
+    } else {
+      mediaRecRef.current.resume();
+      recTimerRef.current = setInterval(() => setRecTime(t => t + 1), 1000);
+      setRecState("recording");
+    }
+  };
+
+  const stopRecording = () => {
+    if (recTimerRef.current) clearInterval(recTimerRef.current);
+    mediaRecRef.current?.stop();
+  };
+
+  const uploadRecording = async () => {
+    if (!recBlob || !user) return;
+    setUploading(true);
+    setUploadProgress(10);
+    const ext  = recBlob.type.includes("mp4") ? "m4a" : "webm";
+    const path = `${user.id}/${Date.now()}.${ext}`;
+    const { error: storageErr } = await supabase.storage
+      .from("videos").upload(path, recBlob, { contentType: recBlob.type, upsert: false });
+    if (storageErr) {
+      alert("Upload failed: " + storageErr.message);
+      setUploading(false);
+      setUploadProgress(0);
+      return;
+    }
+    setUploadProgress(80);
+    const label = `Recording ${new Date(Date.now() + KST_MS).toISOString().slice(11, 16)} KST`;
+    const { data: inserted } = await supabase.from("videos").insert({
+      user_id: user.id, storage_path: path, recorded_date: today,
+      title: label, duration_seconds: recTime,
+    }).select("id").single();
+    setUploading(false);
+    setUploadProgress(0);
+    closeRecorder();
+    fetchTodayVids();
+    if (calYear === nowKST.getFullYear() && calMonth === nowKST.getMonth()) fetchMonthData();
+    if (inserted?.id) { setSelectedStar(0); setHoverStar(0); setRatingVideoId(inserted.id); }
+  };
+
   const fetchMembers = useCallback(async () => {
     const { data } = await supabase.from("users").select("*").eq("status", "approved").order("created_at");
     setMembers((data as UserProfile[]) ?? []);
@@ -376,17 +484,30 @@ export default function UploadPage() {
           <p className="text-sm mt-1" style={{ color: "#6b7280" }}>Share your English speaking recording for today</p>
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
-          <label className={`cursor-pointer flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold transition-all
-            ${uploading ? "bg-gray-800 text-gray-500 cursor-not-allowed" : "bg-white text-black hover:bg-gray-100 hover:scale-105 active:scale-95"}`}>
-            {/* Mic icon */}
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="9" y="2" width="6" height="11" rx="3"/>
-              <path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/>
-            </svg>
-            {uploading ? `Uploading${uploadProgress > 10 ? " ✓" : "..."}` : "+ Upload Recording"}
-            <input ref={fileRef} type="file" accept="audio/*" className="hidden"
-              onChange={handleUpload} disabled={uploading} />
-          </label>
+          <div className="flex items-center gap-2">
+            {/* Record Now button */}
+            <button type="button" disabled={uploading}
+              onClick={() => { setShowRecorder(true); setRecState("idle"); setRecTime(0); setRecBlob(null); setRecUrl(null); }}
+              className={`flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold transition-all
+                ${uploading ? "opacity-40 cursor-not-allowed bg-red-500/20 text-red-400 border border-red-500/20"
+                  : "bg-red-500 text-white hover:bg-red-400 hover:scale-105 active:scale-95 shadow-lg shadow-red-500/25"}`}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="12" cy="12" r="6"/>
+              </svg>
+              Record Now
+            </button>
+            {/* Upload file button */}
+            <label className={`cursor-pointer flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold transition-all border
+              ${uploading ? "bg-gray-800 text-gray-500 cursor-not-allowed border-gray-700"
+                : "bg-gray-900 text-white hover:bg-gray-800 hover:scale-105 active:scale-95 border-gray-700/60 hover:border-gray-500"}`}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              {uploading ? `Uploading${uploadProgress > 10 ? " ✓" : "..."}` : "Upload File"}
+              <input ref={fileRef} type="file" accept="audio/*" className="hidden"
+                onChange={handleUpload} disabled={uploading} />
+            </label>
+          </div>
           {uploading && (
             <div className="w-44 h-1.5 rounded-full bg-gray-800 overflow-hidden">
               <div className="h-full rounded-full transition-all duration-500"
@@ -682,6 +803,133 @@ export default function UploadPage() {
           </div>
         );
       })()}
+
+      {/* ── Record Now Modal ─────────────────────────────────────────── */}
+      {showRecorder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ animation: "fadeIn 0.15s ease-out" }}>
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" onClick={() => { if (recState !== "recording" && recState !== "paused") closeRecorder(); }} />
+          <div className="relative w-full max-w-sm rounded-2xl border border-gray-700/60 bg-gray-950 shadow-2xl p-7 flex flex-col items-center gap-6"
+            style={{ animation: "slideDown 0.2s ease-out" }}>
+
+            {/* Header */}
+            <div className="flex items-center justify-between w-full">
+              <p className="text-sm font-bold tracking-widest uppercase text-gray-400">Record Now</p>
+              <button type="button" onClick={closeRecorder} className="text-gray-600 hover:text-white transition-colors">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+                </svg>
+              </button>
+            </div>
+
+            {/* Timer */}
+            <div className="flex flex-col items-center gap-3">
+              <div className={`w-24 h-24 rounded-full flex items-center justify-center border-2 transition-all
+                ${recState === "recording"
+                  ? "border-red-500 bg-red-500/10 shadow-lg shadow-red-500/30"
+                  : recState === "paused"
+                    ? "border-yellow-500 bg-yellow-500/10"
+                    : recState === "done"
+                      ? "border-green-500 bg-green-500/10"
+                      : "border-gray-700 bg-gray-800/40"}`}>
+                {recState === "recording" && (
+                  <div className="absolute w-24 h-24 rounded-full border-2 border-red-500/40 animate-ping" />
+                )}
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                  stroke={recState === "recording" ? "#f87171" : recState === "done" ? "#4ade80" : recState === "paused" ? "#fbbf24" : "#6b7280"}
+                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="2" width="6" height="11" rx="3"/>
+                  <path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/>
+                </svg>
+              </div>
+              <div className="text-3xl font-mono font-bold text-white tabular-nums">{fmtRecTime(recTime)}</div>
+              <p className="text-xs font-semibold uppercase tracking-widest"
+                style={{ color: recState === "recording" ? "#f87171" : recState === "paused" ? "#fbbf24" : recState === "done" ? "#4ade80" : "#4b5563" }}>
+                {recState === "idle" ? "Ready to record" : recState === "recording" ? "Recording..." : recState === "paused" ? "Paused" : "Recording complete"}
+              </p>
+            </div>
+
+            {/* Controls */}
+            {recState === "idle" && (
+              <button type="button" onClick={startRecording}
+                className="flex items-center gap-2 px-8 py-3 rounded-xl bg-red-500 text-white text-sm font-bold hover:bg-red-400 transition-all hover:scale-105 active:scale-95 shadow-lg shadow-red-500/30">
+                <div className="w-3 h-3 rounded-full bg-white" />
+                Start Recording
+              </button>
+            )}
+
+            {(recState === "recording" || recState === "paused") && (
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={pauseResume}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-gray-600 text-sm font-semibold text-white hover:border-gray-400 transition-all">
+                  {recState === "recording" ? (
+                    <><svg width="12" height="12" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Pause</>
+                  ) : (
+                    <><svg width="12" height="12" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg> Resume</>
+                  )}
+                </button>
+                <button type="button" onClick={stopRecording}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white text-black text-sm font-bold hover:bg-gray-100 transition-all hover:scale-105 active:scale-95">
+                  <div className="w-3 h-3 rounded bg-black" />
+                  Stop
+                </button>
+              </div>
+            )}
+
+            {recState === "done" && recUrl && (
+              <>
+                {/* Preview player */}
+                <audio ref={recAudioRef} src={recUrl} preload="metadata"
+                  onTimeUpdate={() => setRecAudioTime(recAudioRef.current?.currentTime ?? 0)}
+                  onLoadedMetadata={() => setRecAudioDur(recAudioRef.current?.duration ?? 0)}
+                  onEnded={() => setRecPlaying(false)} />
+                <div className="w-full flex flex-col gap-3 rounded-xl border border-gray-800 bg-gray-900/50 p-4">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Preview</p>
+                  <div className="flex items-center gap-3">
+                    <button type="button"
+                      onClick={async () => {
+                        if (!recAudioRef.current) return;
+                        if (recPlaying) { recAudioRef.current.pause(); setRecPlaying(false); }
+                        else { await recAudioRef.current.play(); setRecPlaying(true); }
+                      }}
+                      className="w-9 h-9 rounded-full border border-gray-700 bg-gray-800 hover:border-violet-400/50 hover:bg-violet-400/10 flex items-center justify-center transition-all shrink-0">
+                      {recPlaying
+                        ? <svg width="12" height="12" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                        : <svg width="12" height="12" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>}
+                    </button>
+                    <div className="flex-1 flex flex-col gap-1">
+                      <div className="relative h-1.5 rounded-full bg-gray-800 cursor-pointer"
+                        onClick={e => {
+                          if (!recAudioRef.current || !recAudioDur) return;
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          recAudioRef.current.currentTime = ((e.clientX - rect.left) / rect.width) * recAudioDur;
+                        }}>
+                        <div className="absolute inset-y-0 left-0 rounded-full transition-all"
+                          style={{ width: `${recAudioDur > 0 ? (recAudioTime / recAudioDur) * 100 : 0}%`, background: "linear-gradient(90deg,#a78bfa,#e879f9)" }} />
+                      </div>
+                      <div className="flex justify-between text-[10px] text-gray-600">
+                        <span>{fmtRecTime(Math.floor(recAudioTime))}</span>
+                        <span>{fmtRecTime(Math.floor(recAudioDur))}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-3 w-full">
+                  <button type="button" disabled={uploading}
+                    onClick={() => { setRecState("idle"); setRecTime(0); setRecBlob(null); if (recUrl) URL.revokeObjectURL(recUrl); setRecUrl(null); setRecPlaying(false); }}
+                    className="flex-1 py-2.5 rounded-xl border border-gray-700/60 text-sm text-gray-400 hover:text-white hover:border-gray-500 transition-all">
+                    Re-record
+                  </button>
+                  <button type="button" disabled={uploading} onClick={uploadRecording}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+                    style={{ background: "linear-gradient(135deg,#a78bfa,#e879f9)" }}>
+                    {uploading ? "Uploading..." : "Upload"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Rating Popup ─────────────────────────────────────────────── */}
       {ratingVideoId && (
