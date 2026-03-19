@@ -46,18 +46,35 @@ function Avatar({ user, size = 28 }: { user: UserProfile; size?: number }) {
   );
 }
 
-function SeekBar({ currentTime, duration, audioRef }: {
-  currentTime: number; duration: number; audioRef: React.RefObject<HTMLAudioElement | null>;
+function SeekBar({ audioRef }: {
+  audioRef: React.RefObject<HTMLAudioElement | null>;
 }) {
-  const barRef = useRef<HTMLDivElement>(null);
+  const barRef  = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
-  const pct = duration > 0 && isFinite(duration) ? Math.min((currentTime / duration) * 100, 100) : 0;
+  const rafRef  = useRef<number>(0);
+  const [pos, setPos] = useState({ time: 0, duration: 0 });
+
+  // rAF loop — reads directly from the audio element every frame (~60fps)
+  useEffect(() => {
+    const tick = () => {
+      const el = audioRef.current;
+      if (el && !dragging.current) {
+        const d = isFinite(el.duration) ? el.duration : 0;
+        setPos({ time: el.currentTime, duration: d });
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [audioRef]);
+
+  const { time, duration } = pos;
+  const pct = duration > 0 ? Math.min((time / duration) * 100, 100) : 0;
 
   const seekToX = (clientX: number) => {
-    if (!barRef.current || !audioRef.current || !duration || !isFinite(duration)) return;
+    if (!barRef.current || !audioRef.current || !duration) return;
     const rect = barRef.current.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    audioRef.current.currentTime = ratio * duration;
+    audioRef.current.currentTime = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * duration;
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -72,25 +89,22 @@ function SeekBar({ currentTime, duration, audioRef }: {
     if (!isFinite(s) || isNaN(s) || s < 0) return "0:00";
     return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
   };
-  const remaining = duration > 0 && isFinite(duration) ? duration - currentTime : 0;
 
   return (
     <div className="flex-1 flex flex-col gap-1.5">
       <div ref={barRef}
         className="relative h-2 rounded-full bg-gray-800 cursor-pointer touch-none"
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerLeave={onPointerUp}>
-        {/* Fill */}
         <div className="absolute inset-y-0 left-0 rounded-full"
-          style={{ width: `${pct}%`, background: "linear-gradient(90deg,#f59e0b,#fbbf24)", transition: dragging.current ? "none" : "width 0.1s linear" }} />
-        {/* Thumb */}
+          style={{ width: `${pct}%`, background: "linear-gradient(90deg,#f59e0b,#fbbf24)" }} />
         {pct > 0 && (
           <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow-md border border-yellow-300/60 pointer-events-none"
             style={{ left: `calc(${pct}% - 6px)` }} />
         )}
       </div>
       <div className="flex justify-between text-[10px]" style={{ color: "#6b7280" }}>
-        <span className="font-medium text-yellow-500/80">{fmt(currentTime)}</span>
-        <span>−{fmt(remaining)}</span>
+        <span className="font-medium text-yellow-500/80">{fmt(time)}</span>
+        <span>−{fmt(Math.max(0, duration - time))}</span>
       </div>
     </div>
   );
@@ -197,7 +211,7 @@ function AudioCard({ video, publicUrl, currentUserId, today, onDelete }: {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           )}
         </button>
-        <SeekBar currentTime={currentTime} duration={duration} audioRef={ref} />
+        <SeekBar audioRef={ref} />
       </div>
     </div>
   );
@@ -797,9 +811,9 @@ export default function UploadPage() {
                   </svg>
                 </button>
               </div>
-              <SeekBar currentTime={uploadAudioTime} duration={uploadAudioDur} audioRef={uploadAudioRef} />
+              <SeekBar audioRef={uploadAudioRef} />
               <div className="flex items-center justify-center gap-4">
-                <button type="button" onClick={() => { if (uploadAudioRef.current) uploadAudioRef.current.currentTime = Math.max(0, uploadAudioTime - 10); }}
+                <button type="button" onClick={() => { if (uploadAudioRef.current) uploadAudioRef.current.currentTime = Math.max(0, uploadAudioRef.current.currentTime - 10); }}
                   className="text-gray-500 hover:text-white transition-colors text-xs">−10s</button>
                 <button type="button"
                   onClick={async () => {
@@ -813,7 +827,7 @@ export default function UploadPage() {
                     : <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                   }
                 </button>
-                <button type="button" onClick={() => { if (uploadAudioRef.current) uploadAudioRef.current.currentTime = Math.min(uploadAudioDur, uploadAudioTime + 10); }}
+                <button type="button" onClick={() => { if (uploadAudioRef.current) uploadAudioRef.current.currentTime = Math.min(uploadAudioRef.current.duration || 0, uploadAudioRef.current.currentTime + 10); }}
                   className="text-gray-500 hover:text-white transition-colors text-xs">+10s</button>
               </div>
             </div>
@@ -914,7 +928,7 @@ export default function UploadPage() {
                         ? <svg width="12" height="12" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
                         : <svg width="12" height="12" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>}
                     </button>
-                    <SeekBar currentTime={recAudioTime} duration={recAudioDur} audioRef={recAudioRef} />
+                    <SeekBar audioRef={recAudioRef} />
                   </div>
                 </div>
                 <div className="flex gap-3 w-full">
