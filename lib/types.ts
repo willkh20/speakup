@@ -9,6 +9,7 @@ export interface UserProfile {
   weekly_goal_set_at: string | null;
   status: "pending" | "approved" | "rejected";
   is_admin: boolean;
+  onboarding_done: boolean;
   created_at: string;
 }
 

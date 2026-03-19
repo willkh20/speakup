@@ -40,6 +40,160 @@ const Logo = () => (
   </span>
 );
 
+// ── Onboarding Modal ───────────────────────────────────────────────────────
+function OnboardingModal({ userId, onDone }: { userId: string; onDone: () => void }) {
+  const [nickname,   setNickname]   = useState("");
+  const [goal,       setGoal]       = useState("");
+  const [weeklyGoal, setWeeklyGoal] = useState(7);
+  const [avatarUrl,  setAvatarUrl]  = useState<string | null>(null);
+  const [uploading,  setUploading]  = useState(false);
+  const [saving,     setSaving]     = useState(false);
+  const [fullName,   setFullName]   = useState<string | null>(null);
+  const avatarRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    supabase.from("users").select("full_name, avatar_url").eq("id", userId).single()
+      .then(({ data }) => {
+        if (data) {
+          setFullName((data as { full_name: string | null }).full_name);
+          setAvatarUrl((data as { avatar_url: string | null }).avatar_url);
+        }
+      });
+  }, [userId]);
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    const ext  = file.name.split(".").pop() ?? "jpg";
+    const path = `${userId}/avatar.${ext}`;
+    await supabase.storage.from("avatars").remove([path]);
+    const { error } = await supabase.storage.from("avatars").upload(path, file, { contentType: file.type, upsert: true });
+    if (!error) {
+      const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
+      const url = `${publicUrl}?t=${Date.now()}`;
+      await supabase.from("users").update({ avatar_url: url }).eq("id", userId);
+      setAvatarUrl(url);
+    }
+    setUploading(false);
+    if (avatarRef.current) avatarRef.current.value = "";
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    await supabase.from("users").update({
+      nickname:           nickname.trim() || null,
+      goal:               goal.trim() || null,
+      weekly_goal:        weeklyGoal,
+      weekly_goal_set_at: new Date().toISOString(),
+      onboarding_done:    true,
+    }).eq("id", userId);
+    setSaving(false);
+    onDone();
+  };
+
+  const initials = (nickname || fullName || "?")[0].toUpperCase();
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center px-4" style={{ animation: "fadeIn 0.3s ease-out" }}>
+      <div className="fixed inset-0 bg-black/80 backdrop-blur-md" />
+      <div className="relative w-full max-w-md rounded-2xl border border-gray-700/60 bg-gray-950 shadow-2xl overflow-hidden flex flex-col"
+        style={{ animation: "slideDown 0.3s ease-out", maxHeight: "92vh" }}>
+
+        {/* Header */}
+        <div className="px-7 pt-7 pb-5 border-b border-gray-800/60 text-center">
+          <div className="text-2xl mb-1">👋</div>
+          <h2 className="text-xl font-bold text-white">Welcome to Speak Up!</h2>
+          <p className="text-sm mt-1.5" style={{ color: "#6b7280" }}>Set up your profile before you get started</p>
+        </div>
+
+        <div className="overflow-y-auto flex-1 px-7 py-6 flex flex-col gap-6">
+          {/* Photo */}
+          <div className="flex flex-col items-center gap-2">
+            <div className="relative group cursor-pointer" onClick={() => avatarRef.current?.click()}>
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="" className="w-20 h-20 rounded-full object-cover ring-2 ring-violet-500/30" />
+              ) : (
+                <div className="w-20 h-20 rounded-full flex items-center justify-center text-2xl font-bold text-white"
+                  style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)" }}>
+                  {initials}
+                </div>
+              )}
+              <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                {uploading
+                  ? <div className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                  : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                }
+              </div>
+              <input ref={avatarRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+            </div>
+            <p className="text-xs" style={{ color: "#4b5563" }}>{uploading ? "Uploading..." : "Click to add a photo (optional)"}</p>
+          </div>
+
+          {/* Nickname */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold tracking-widest uppercase" style={{ color: "#6b7280" }}>
+              Nickname <span style={{ color: "#374151" }}>(optional)</span>
+            </label>
+            <input
+              type="text" value={nickname} onChange={e => setNickname(e.target.value)}
+              placeholder={fullName ?? "Your nickname"}
+              className="w-full bg-gray-800/50 border border-gray-700/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 outline-none focus:border-violet-500/50 transition-colors"
+            />
+            <p className="text-[11px]" style={{ color: "#374151" }}>Displayed instead of your Google name</p>
+          </div>
+
+          {/* My Goal */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold tracking-widest uppercase" style={{ color: "#6b7280" }}>
+              My Goal <span style={{ color: "#374151" }}>(optional)</span>
+            </label>
+            <textarea
+              value={goal} onChange={e => setGoal(e.target.value)}
+              placeholder="e.g. Pass OPIc AL by June"
+              rows={2}
+              className="w-full bg-gray-800/50 border border-gray-700/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 outline-none focus:border-violet-500/50 transition-colors resize-none"
+            />
+          </div>
+
+          {/* Weekly Goal */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold tracking-widest uppercase" style={{ color: "#6b7280" }}>Weekly Goal</label>
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={() => setWeeklyGoal(g => Math.max(1, g - 1))}
+                className="w-9 h-9 rounded-full border border-gray-700/60 text-gray-400 hover:text-white hover:border-gray-500 transition-all font-bold text-base flex items-center justify-center">
+                −
+              </button>
+              <div className="flex-1 text-center">
+                <span className="text-2xl font-bold text-white">{weeklyGoal}</span>
+                <span className="text-sm ml-1" style={{ color: "#6b7280" }}>/ 7 days</span>
+              </div>
+              <button type="button" onClick={() => setWeeklyGoal(g => Math.min(7, g + 1))}
+                className="w-9 h-9 rounded-full border border-gray-700/60 text-gray-400 hover:text-white hover:border-gray-500 transition-all font-bold text-base flex items-center justify-center">
+                +
+              </button>
+            </div>
+            <p className="text-[11px] text-center" style={{ color: "#4b5563" }}>
+              🔒 Weekly Goal은 설정 후 30일 동안 변경할 수 없어요
+            </p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-7 py-5 border-t border-gray-800/60">
+          <button type="button" onClick={handleSave} disabled={saving || uploading}
+            className="w-full py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50 hover:scale-[1.02] active:scale-95"
+            style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)", color: "white" }}>
+            {saving ? "Saving..." : "Get Started →"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Profile panel ──────────────────────────────────────────────────────────
 function ProfilePanel({ userId, onClose }: { userId: string; onClose: () => void }) {
   const [profile,     setProfile]     = useState<UserProfile | null>(null);
@@ -237,15 +391,22 @@ function ProfilePanel({ userId, onClose }: { userId: string; onClose: () => void
 export default function DashboardNav() {
   const pathname = usePathname();
   const { user, signOut } = useAuth();
-  const [mobileOpen,  setMobileOpen]  = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [myProfile,   setMyProfile]   = useState<UserProfile | null>(null);
+  const [mobileOpen,    setMobileOpen]    = useState(false);
+  const [profileOpen,   setProfileOpen]   = useState(false);
+  const [myProfile,     setMyProfile]     = useState<UserProfile | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   // Load profile for nav display name + admin status
   useEffect(() => {
     if (!user) return;
     supabase.from("users").select("*").eq("id", user.id).single()
-      .then(({ data }) => { if (data) setMyProfile(data as UserProfile); });
+      .then(({ data }) => {
+        if (!data) return;
+        const profile = data as UserProfile;
+        setMyProfile(profile);
+        // Show onboarding only on very first login
+        if (!profile.onboarding_done) setShowOnboarding(true);
+      });
   }, [user, profileOpen]); // re-fetch after panel closes
 
   const allTabs = myProfile?.is_admin ? [...tabs, adminTab] : tabs;
@@ -350,6 +511,16 @@ export default function DashboardNav() {
           </div>
         )}
       </header>
+
+      {/* Onboarding modal — first login only */}
+      {showOnboarding && user && (
+        <OnboardingModal userId={user.id} onDone={() => {
+          setShowOnboarding(false);
+          // Re-fetch profile so nav shows updated name/avatar
+          supabase.from("users").select("*").eq("id", user.id).single()
+            .then(({ data }) => { if (data) setMyProfile(data as UserProfile); });
+        }} />
+      )}
 
       {/* Profile panel */}
       {profileOpen && user && (
