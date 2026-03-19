@@ -41,8 +41,8 @@ export default function MembersPage() {
     const fines = (f as Fine[]) ?? [];
     setStats(users.map(u => ({
       user:       u,
-      weekCount:  vids.filter(x => x.user_id === u.id && x.recorded_date >= weekStart).length,
-      totalCount: vids.filter(x => x.user_id === u.id).length,
+      weekCount:  new Set(vids.filter(x => x.user_id === u.id && x.recorded_date >= weekStart).map(x => x.recorded_date)).size,
+      totalCount: new Set(vids.filter(x => x.user_id === u.id).map(x => x.recorded_date)).size,
       totalFine:  fines.filter(x => x.user_id === u.id).reduce((s, x) => s + x.amount, 0),
     })));
     setLoading(false);

@@ -127,7 +127,9 @@ export default function HomePage() {
     );
   };
 
-  const weekCount   = (uid: string) => videos.filter(v => v.user_id === uid).length;
+  // Count unique days with at least one upload (not total uploads)
+  const weekCount = (uid: string) =>
+    new Set(videos.filter(v => v.user_id === uid).map(v => v.recorded_date)).size;
   const todayVidMap = new Map(videos.filter(v => v.recorded_date === today).map(v => [v.user_id, v]));
   const todayJoined = members.filter(m => todayVidMap.has(m.id));
   const todayMissed = members.filter(m => !todayVidMap.has(m.id));

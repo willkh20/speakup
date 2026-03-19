@@ -46,8 +46,8 @@ function Avatar({ user, size = 28 }: { user: UserProfile; size?: number }) {
   );
 }
 
-function AudioCard({ video, publicUrl, currentUserId, onDelete }: {
-  video: Video; publicUrl: string; currentUserId?: string; onDelete?: () => void;
+function AudioCard({ video, publicUrl, currentUserId, today, onDelete }: {
+  video: Video; publicUrl: string; currentUserId?: string; today: string; onDelete?: () => void;
 }) {
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -57,6 +57,7 @@ function AudioCard({ video, publicUrl, currentUserId, onDelete }: {
   const ref = useRef<HTMLAudioElement>(null);
   const u = video.users as UserProfile | undefined;
   const isOwner = currentUserId && currentUserId === video.user_id;
+  const canDelete = isOwner && video.recorded_date === today;
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -100,7 +101,7 @@ function AudioCard({ video, publicUrl, currentUserId, onDelete }: {
             className="text-xs border border-gray-700/60 hover:border-gray-500 text-gray-400 hover:text-white px-2.5 py-1 rounded-lg transition-all">
             Save
           </a>
-          {isOwner && (
+          {canDelete && (
             <button type="button" onClick={() => setConfirmDel(true)}
               className="w-7 h-7 rounded-lg border border-gray-700/60 hover:border-red-500/50 hover:bg-red-500/10 text-gray-600 hover:text-red-400 flex items-center justify-center transition-all">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -502,10 +503,12 @@ export default function UploadPage() {
             const isToday = dateStr === today;
             const isPast  = dateStr < today;
             const vids    = videosByDate[dateStr] ?? [];
-            const count   = vids.length;
+            // Deduplicate by user: one dot / one count per unique uploader per day
+            const uniqueUploaderIds = [...new Set(vids.map(v => v.user_id))];
+            const count   = uniqueUploaderIds.length;
             const total   = members.length;
             const full    = total > 0 && count >= total;
-            const uploaderColors = vids.map(v => memberColorMap.get(v.user_id)).filter(Boolean) as string[];
+            const uploaderColors = uniqueUploaderIds.map(uid => memberColorMap.get(uid)).filter(Boolean) as string[];
 
             return (
               <button key={dateStr} type="button"
@@ -600,7 +603,7 @@ export default function UploadPage() {
                   <div className="flex flex-col gap-3">
                     {selVids.map(v => (
                       <AudioCard key={v.id} video={v} publicUrl={monthUrls[v.id] ?? ""}
-                        currentUserId={user?.id}
+                        currentUserId={user?.id} today={today}
                         onDelete={() => { fetchTodayVids(); fetchMonthData(); }} />
                     ))}
                   </div>
