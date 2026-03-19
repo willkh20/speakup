@@ -9,6 +9,62 @@ import { displayName } from "@/lib/types";
 import type { Topic, UserProfile, Video } from "@/lib/types";
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+// ── SeekBar ───────────────────────────────────────────────────────────────
+function SeekBar({ audioRef }: { audioRef: React.RefObject<HTMLAudioElement | null> }) {
+  const barRef   = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+  const rafRef   = useRef<number>(0);
+  const [pos, setPos] = useState({ time: 0, duration: 0 });
+
+  useEffect(() => {
+    const tick = () => {
+      const el = audioRef.current;
+      if (el && !dragging.current) {
+        const d = isFinite(el.duration) ? el.duration : 0;
+        setPos({ time: el.currentTime, duration: d });
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [audioRef]);
+
+  const { time, duration } = pos;
+  const pct = duration > 0 ? Math.min((time / duration) * 100, 100) : 0;
+
+  const seekToX = (clientX: number) => {
+    if (!barRef.current || !audioRef.current || !duration) return;
+    const rect = barRef.current.getBoundingClientRect();
+    audioRef.current.currentTime = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * duration;
+  };
+  const onPointerDown = (e: React.PointerEvent) => { dragging.current = true; barRef.current?.setPointerCapture(e.pointerId); seekToX(e.clientX); };
+  const onPointerMove = (e: React.PointerEvent) => { if (dragging.current) seekToX(e.clientX); };
+  const onPointerUp   = () => { dragging.current = false; };
+
+  const fmt = (s: number) => {
+    if (!isFinite(s) || isNaN(s) || s < 0) return "0:00";
+    return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div ref={barRef} className="relative h-2 rounded-full bg-gray-800 cursor-pointer touch-none"
+        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerLeave={onPointerUp}>
+        <div className="absolute inset-y-0 left-0 rounded-full"
+          style={{ width: `${pct}%`, background: "linear-gradient(90deg,#f59e0b,#fbbf24)" }} />
+        {pct > 0 && (
+          <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow-md border border-yellow-300/60 pointer-events-none"
+            style={{ left: `calc(${pct}% - 6px)` }} />
+        )}
+      </div>
+      <div className="flex justify-between text-[10px]" style={{ color: "#6b7280" }}>
+        <span className="font-medium text-yellow-500/80">{fmt(time)}</span>
+        <span>−{fmt(Math.max(0, duration - time))}</span>
+      </div>
+    </div>
+  );
+}
+
 // ── Countdown ─────────────────────────────────────────────────────────────
 function Countdown() {
   const [secs, setSecs] = useState(0);
@@ -55,8 +111,6 @@ export default function HomePage() {
   const [playingVid, setPlayingVid] = useState<Video | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [audioPlaying, setAudioPlaying] = useState(false);
-  const [audioTime,    setAudioTime]    = useState(0);
-  const [audioDur,     setAudioDur]     = useState(0);
 
   const fetchTopic = useCallback(async () => {
     const { data: custom } = await supabase.from("topics").select("*")
@@ -217,7 +271,7 @@ export default function HomePage() {
                       const uploadedAt = fmtUploadTime(vid.created_at);
                       return (
                         <button key={m.id} type="button"
-                          onClick={() => { setPlayingVid(vid); setAudioPlaying(false); setAudioTime(0); setAudioDur(0); }}
+                          onClick={() => { setPlayingVid(vid); setAudioPlaying(false); }}
                           className="flex items-center gap-3 rounded-xl bg-green-400/5 border border-green-400/10 px-4 py-2.5 hover:bg-green-400/10 hover:border-green-400/20 transition-all text-left w-full">
                           <Avatar user={m} size={30} />
                           <div className="flex-1 min-w-0">
@@ -352,17 +406,13 @@ export default function HomePage() {
       {playingVid && (() => {
         const url = todayUrls[playingVid.id] ?? "";
         const u   = playingVid.users as UserProfile | undefined;
-        const pct = audioDur > 0 ? (audioTime / audioDur) * 100 : 0;
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ animation: "fadeIn 0.15s ease-out" }}>
             <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => { setPlayingVid(null); audioRef.current?.pause(); }} />
             <div className="relative w-full max-w-sm rounded-2xl border border-gray-700/60 bg-gray-950 shadow-2xl p-6 flex flex-col gap-4"
               style={{ animation: "slideDown 0.2s ease-out" }}>
 
-              <audio ref={audioRef} src={url} preload="metadata"
-                onTimeUpdate={() => setAudioTime(audioRef.current?.currentTime ?? 0)}
-                onLoadedMetadata={() => setAudioDur(audioRef.current?.duration ?? 0)}
-                onEnded={() => setAudioPlaying(false)} />
+              <audio ref={audioRef} src={url} preload="metadata" onEnded={() => setAudioPlaying(false)} />
 
               {/* Header */}
               <div className="flex items-center justify-between">
@@ -381,24 +431,11 @@ export default function HomePage() {
                 </button>
               </div>
 
-              {/* Progress bar */}
-              <div className="relative h-1.5 rounded-full bg-gray-800 cursor-pointer"
-                onClick={e => {
-                  if (!audioRef.current || !audioDur) return;
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  audioRef.current.currentTime = ((e.clientX - rect.left) / rect.width) * audioDur;
-                }}>
-                <div className="absolute inset-y-0 left-0 rounded-full transition-all"
-                  style={{ width: `${pct}%`, background: "linear-gradient(90deg,#a78bfa,#e879f9)" }} />
-              </div>
-              <div className="flex justify-between text-[11px]" style={{ color: "#4b5563" }}>
-                <span>{fmtTime(audioTime)}</span>
-                <span>{fmtTime(audioDur)}</span>
-              </div>
+              <SeekBar audioRef={audioRef} />
 
               {/* Controls */}
               <div className="flex items-center justify-center gap-4">
-                <button type="button" onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.max(0, audioTime - 10); }}
+                <button type="button" onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 10); }}
                   className="text-gray-500 hover:text-white transition-colors text-xs">−10s</button>
                 <button type="button"
                   onClick={async () => {
@@ -406,13 +443,13 @@ export default function HomePage() {
                     if (audioPlaying) { audioRef.current.pause(); setAudioPlaying(false); }
                     else { await audioRef.current.play(); setAudioPlaying(true); }
                   }}
-                  className="w-12 h-12 rounded-full flex items-center justify-center border border-violet-400/30 bg-violet-400/10 hover:bg-violet-400/20 transition-all">
+                  className="w-12 h-12 rounded-full flex items-center justify-center border border-yellow-400/30 bg-yellow-400/10 hover:bg-yellow-400/20 transition-all">
                   {audioPlaying
                     ? <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
                     : <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                   }
                 </button>
-                <button type="button" onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.min(audioDur, audioTime + 10); }}
+                <button type="button" onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.min(audioRef.current.duration || 0, audioRef.current.currentTime + 10); }}
                   className="text-gray-500 hover:text-white transition-colors text-xs">+10s</button>
               </div>
             </div>
