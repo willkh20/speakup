@@ -209,9 +209,9 @@ const Hero = React.memo(() => {
           letterSpacing: "-0.05em",
         }}
       >
-        Speak up, grow together,
+        Grow together,
         <br />
-        every single week
+        Every single Week
       </h1>
 
       {/* Sub-description */}
