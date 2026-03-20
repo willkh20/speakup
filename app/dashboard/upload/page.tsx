@@ -114,8 +114,6 @@ function AudioCard({ video, publicUrl, currentUserId, today, onDelete }: {
   video: Video; publicUrl: string; currentUserId?: string; today: string; onDelete?: () => void;
 }) {
   const [playing, setPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
   const [deleting, setDeleting] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const ref = useRef<HTMLAudioElement>(null);
@@ -138,15 +136,13 @@ function AudioCard({ video, publicUrl, currentUserId, today, onDelete }: {
     else { try { await ref.current.play(); setPlaying(true); } catch { setPlaying(false); } }
   };
 
-  const setDur = (d: number) => { if (isFinite(d) && d > 0) setDuration(d); };
-
   const handleSave = async () => {
     try {
-      const res = await fetch(publicUrl);
-      const blob = await res.blob();
-      const ext = blob.type.includes("mp4") || blob.type.includes("m4a") ? "m4a" : "webm";
+      const { data, error } = await supabase.storage.from("videos").download(video.storage_path);
+      if (error || !data) throw error;
+      const ext = data.type.includes("mp4") || data.type.includes("m4a") ? "m4a" : "webm";
       const filename = `speakup_${video.recorded_date}_${(u?.full_name ?? "recording").replace(/\s+/g, "_")}.${ext}`;
-      const url = URL.createObjectURL(blob);
+      const url = URL.createObjectURL(data);
       const a = document.createElement("a");
       a.href = url; a.download = filename; a.click();
       URL.revokeObjectURL(url);
@@ -156,10 +152,7 @@ function AudioCard({ video, publicUrl, currentUserId, today, onDelete }: {
   return (
     <div className="rounded-xl border border-gray-800/60 bg-gray-900/50 p-4 flex flex-col gap-3">
       <audio ref={ref} src={publicUrl} preload="metadata"
-        onTimeUpdate={() => setCurrentTime(ref.current?.currentTime ?? 0)}
-        onLoadedMetadata={() => setDur(ref.current?.duration ?? 0)}
-        onDurationChange={() => setDur(ref.current?.duration ?? 0)}
-        onEnded={() => { setPlaying(false); setCurrentTime(0); }} />
+        onEnded={() => setPlaying(false)} />
 
       {/* User row */}
       <div className="flex items-center gap-2">
@@ -276,8 +269,6 @@ export default function UploadPage() {
   const streamRef    = useRef<MediaStream | null>(null);
   const recAudioRef  = useRef<HTMLAudioElement>(null);
   const [recPlaying, setRecPlaying] = useState(false);
-  const [recAudioTime, setRecAudioTime] = useState(0);
-  const [recAudioDur,  setRecAudioDur]  = useState(0);
 
   const fmtRecTime = (s: number) =>
     `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
@@ -293,8 +284,6 @@ export default function UploadPage() {
     setRecBlob(null);
     setRecUrl(null);
     setRecPlaying(false);
-    setRecAudioTime(0);
-    setRecAudioDur(0);
   };
 
   const startRecording = async () => {
@@ -796,7 +785,6 @@ export default function UploadPage() {
       {uploadPlayingVid && (() => {
         const url = todayAudioUrls[uploadPlayingVid.id] ?? "";
         const u   = uploadPlayingVid.users as UserProfile | undefined;
-        const pct = uploadAudioDur > 0 ? (uploadAudioTime / uploadAudioDur) * 100 : 0;
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ animation: "fadeIn 0.15s ease-out" }}>
             <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => { setUploadPlayingVid(null); uploadAudioRef.current?.pause(); }} />
@@ -923,9 +911,6 @@ export default function UploadPage() {
               <>
                 {/* Preview player */}
                 <audio ref={recAudioRef} src={recUrl} preload="auto"
-                  onTimeUpdate={() => setRecAudioTime(recAudioRef.current?.currentTime ?? 0)}
-                  onLoadedMetadata={() => { const d = recAudioRef.current?.duration ?? 0; if (isFinite(d) && d > 0) setRecAudioDur(d); }}
-                  onDurationChange={() => { const d = recAudioRef.current?.duration ?? 0; if (isFinite(d) && d > 0) setRecAudioDur(d); }}
                   onEnded={() => setRecPlaying(false)} />
                 <div className="w-full flex flex-col gap-3 rounded-xl border border-gray-800 bg-gray-900/50 p-4">
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Preview</p>
