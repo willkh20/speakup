@@ -140,6 +140,19 @@ function AudioCard({ video, publicUrl, currentUserId, today, onDelete }: {
 
   const setDur = (d: number) => { if (isFinite(d) && d > 0) setDuration(d); };
 
+  const handleSave = async () => {
+    try {
+      const res = await fetch(publicUrl);
+      const blob = await res.blob();
+      const ext = blob.type.includes("mp4") || blob.type.includes("m4a") ? "m4a" : "webm";
+      const filename = `speakup_${video.recorded_date}_${(u?.full_name ?? "recording").replace(/\s+/g, "_")}.${ext}`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+    } catch { alert("다운로드 실패. 다시 시도해주세요."); }
+  };
+
   return (
     <div className="rounded-xl border border-gray-800/60 bg-gray-900/50 p-4 flex flex-col gap-3">
       <audio ref={ref} src={publicUrl} preload="metadata"
@@ -156,10 +169,10 @@ function AudioCard({ video, publicUrl, currentUserId, today, onDelete }: {
           <p className="text-[11px]" style={{ color: "#6b7280" }}>{video.title}</p>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          <a href={publicUrl} download
+          <button type="button" onClick={handleSave}
             className="text-xs border border-gray-700/60 hover:border-gray-500 text-gray-400 hover:text-white px-2.5 py-1 rounded-lg transition-all">
             Save
-          </a>
+          </button>
           {canDelete && (
             <button type="button" onClick={() => setConfirmDel(true)}
               className="w-7 h-7 rounded-lg border border-gray-700/60 hover:border-red-500/50 hover:bg-red-500/10 text-gray-600 hover:text-red-400 flex items-center justify-center transition-all">
