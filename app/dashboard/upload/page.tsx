@@ -143,7 +143,14 @@ function AudioCard({ video, publicUrl, currentUserId, today, onDelete }: {
       video.storage_path, 60, { download: filename }
     );
     if (error || !data?.signedUrl) { alert("다운로드 실패. 다시 시도해주세요."); return; }
-    window.open(data.signedUrl, "_blank");
+    const res = await fetch(data.signedUrl);
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
   };
 
   return (
