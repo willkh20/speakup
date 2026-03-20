@@ -137,16 +137,13 @@ function AudioCard({ video, publicUrl, currentUserId, today, onDelete }: {
   };
 
   const handleSave = async () => {
-    try {
-      const { data, error } = await supabase.storage.from("videos").download(video.storage_path);
-      if (error || !data) throw error;
-      const ext = data.type.includes("mp4") || data.type.includes("m4a") ? "m4a" : "webm";
-      const filename = `speakup_${video.recorded_date}_${(u?.full_name ?? "recording").replace(/\s+/g, "_")}.${ext}`;
-      const url = URL.createObjectURL(data);
-      const a = document.createElement("a");
-      a.href = url; a.download = filename; a.click();
-      URL.revokeObjectURL(url);
-    } catch { alert("다운로드 실패. 다시 시도해주세요."); }
+    const ext = video.storage_path.endsWith(".m4a") ? "m4a" : "webm";
+    const filename = `speakup_${video.recorded_date}_${(u?.full_name ?? "recording").replace(/\s+/g, "_")}.${ext}`;
+    const { data, error } = await supabase.storage.from("videos").createSignedUrl(
+      video.storage_path, 60, { download: filename }
+    );
+    if (error || !data?.signedUrl) { alert("다운로드 실패. 다시 시도해주세요."); return; }
+    window.open(data.signedUrl, "_blank");
   };
 
   return (
