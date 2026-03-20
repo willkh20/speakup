@@ -108,7 +108,8 @@ export default function HomePage() {
   const [todayUrls, setTodayUrls] = useState<Record<string, string>>({});
 
   // Audio player popup
-  const [playingVid, setPlayingVid] = useState<Video | null>(null);
+  const [memberPopup, setMemberPopup] = useState<{ member: UserProfile; videos: Video[] } | null>(null);
+  const [activeVidId, setActiveVidId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [audioPlaying, setAudioPlaying] = useState(false);
 
@@ -147,6 +148,17 @@ export default function HomePage() {
 
   useEffect(() => { fetchTopic(); fetchData(); }, [fetchTopic, fetchData]);
 
+  // Reload audio element when selected recording changes
+  useEffect(() => {
+    if (!activeVidId) return;
+    const el = audioRef.current;
+    if (!el) return;
+    el.pause();
+    el.src = todayUrls[activeVidId] ?? "";
+    el.load();
+    setAudioPlaying(false);
+  }, [activeVidId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Re-fetch when tab regains focus so ratings set on upload page are visible
   useEffect(() => {
     const onFocus = () => fetchData();
@@ -184,9 +196,14 @@ export default function HomePage() {
   // Count unique days with at least one upload (not total uploads)
   const weekCount = (uid: string) =>
     new Set(videos.filter(v => v.user_id === uid).map(v => v.recorded_date)).size;
-  const todayVidMap = new Map(videos.filter(v => v.recorded_date === today).map(v => [v.user_id, v]));
-  const todayJoined = members.filter(m => todayVidMap.has(m.id));
-  const todayMissed = members.filter(m => !todayVidMap.has(m.id));
+  const todayVidsByUser = new Map<string, Video[]>();
+  videos.filter(v => v.recorded_date === today).forEach(v => {
+    const arr = todayVidsByUser.get(v.user_id) ?? [];
+    arr.push(v);
+    todayVidsByUser.set(v.user_id, arr);
+  });
+  const todayJoined = members.filter(m => todayVidsByUser.has(m.id));
+  const todayMissed = members.filter(m => !todayVidsByUser.has(m.id));
   const videosOnDay = (dateStr: string) => videos.filter(v => v.recorded_date === dateStr);
   const localDateStr = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
   const dayIndex    = weekDays.findIndex((d: Date) => localDateStr(d) === today);
@@ -266,12 +283,13 @@ export default function HomePage() {
                   <p className="text-[10px] text-green-400 font-semibold uppercase tracking-widest mb-2">Joined ✓</p>
                   <div className="flex flex-col gap-2">
                     {todayJoined.map(m => {
-                      const vid = todayVidMap.get(m.id)!;
-                      const dur = fmtDur(vid.duration_seconds);
-                      const uploadedAt = fmtUploadTime(vid.created_at);
+                      const vids = todayVidsByUser.get(m.id) ?? [];
+                      const latest = vids[vids.length - 1];
+                      const dur = fmtDur(latest?.duration_seconds ?? null);
+                      const uploadedAt = fmtUploadTime(latest?.created_at ?? "");
                       return (
                         <button key={m.id} type="button"
-                          onClick={() => { setPlayingVid(vid); setAudioPlaying(false); }}
+                          onClick={() => { setMemberPopup({ member: m, videos: vids }); setActiveVidId(vids[0]?.id ?? null); setAudioPlaying(false); }}
                           className="flex items-center gap-3 rounded-xl bg-green-400/5 border border-green-400/10 px-4 py-2.5 hover:bg-green-400/10 hover:border-green-400/20 transition-all text-left w-full">
                           <Avatar user={m} size={30} />
                           <div className="flex-1 min-w-0">
@@ -279,10 +297,11 @@ export default function HomePage() {
                             <div className="flex items-center gap-2 mt-0.5">
                               {dur && <span className="text-[11px]" style={{ color: "#6b7280" }}>⏱ {dur}</span>}
                               <span className="text-[11px]" style={{ color: "#6b7280" }}>{uploadedAt} KST</span>
+                              {vids.length > 1 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full border border-purple-400/30 bg-purple-400/10" style={{ color: "#c084fc" }}>{vids.length} recordings</span>}
                             </div>
                           </div>
                           <div className="flex flex-col items-end gap-1 shrink-0">
-                            <Stars rating={vid.rating} />
+                            <Stars rating={latest?.rating ?? null} />
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4b5563" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                               <polygon points="5 3 19 12 5 21 5 3"/>
                             </svg>
@@ -403,32 +422,48 @@ export default function HomePage() {
       </section>
 
       {/* ── Audio Player Popup ───────────────────────────────────────────── */}
-      {playingVid && (() => {
-        const url = todayUrls[playingVid.id] ?? "";
-        const u   = playingVid.users as UserProfile | undefined;
+      {memberPopup && (() => {
+        const { member, videos: popVids } = memberPopup;
+        const closePopup = () => { setMemberPopup(null); setActiveVidId(null); audioRef.current?.pause(); setAudioPlaying(false); };
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ animation: "fadeIn 0.15s ease-out" }}>
-            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => { setPlayingVid(null); audioRef.current?.pause(); }} />
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={closePopup} />
             <div className="relative w-full max-w-sm rounded-2xl border border-gray-700/60 bg-gray-950 shadow-2xl p-6 flex flex-col gap-4"
               style={{ animation: "slideDown 0.2s ease-out" }}>
 
-              <audio ref={audioRef} src={url} preload="metadata" onEnded={() => setAudioPlaying(false)} />
+              <audio ref={audioRef} preload="metadata" onEnded={() => setAudioPlaying(false)} />
 
               {/* Header */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  {u && <Avatar user={u} size={36} />}
-                  <div>
-                    <p className="text-sm font-bold text-white">{u ? displayName(u) : "Unknown"}</p>
-                    <Stars rating={playingVid.rating} />
-                  </div>
+                  <Avatar user={member} size={36} />
+                  <p className="text-sm font-bold text-white">{displayName(member)}</p>
                 </div>
-                <button type="button" onClick={() => { setPlayingVid(null); audioRef.current?.pause(); }}
-                  className="text-gray-600 hover:text-white transition-colors">
+                <button type="button" onClick={closePopup} className="text-gray-600 hover:text-white transition-colors">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
                   </svg>
                 </button>
+              </div>
+
+              {/* Recording list */}
+              <div className="flex flex-col gap-2">
+                {popVids.map((vid, i) => (
+                  <button key={vid.id} type="button"
+                    onClick={() => { if (activeVidId !== vid.id) { setActiveVidId(vid.id); setAudioPlaying(false); } }}
+                    className={`flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all text-left ${activeVidId === vid.id ? "border-yellow-400/40 bg-yellow-400/10" : "border-gray-700/40 bg-gray-900/40 hover:border-gray-600/60"}`}>
+                    <div className="flex items-center gap-2">
+                      <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${activeVidId === vid.id ? "bg-yellow-400" : "bg-gray-600"}`} />
+                      <div>
+                        <p className="text-xs font-semibold text-white">Recording {i + 1}</p>
+                        <p className="text-[10px]" style={{ color: "#6b7280" }}>
+                          {fmtUploadTime(vid.created_at)} KST{vid.duration_seconds ? ` · ${fmtDur(vid.duration_seconds)}` : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <Stars rating={vid.rating} />
+                  </button>
+                ))}
               </div>
 
               <SeekBar audioRef={audioRef} />

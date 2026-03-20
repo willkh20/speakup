@@ -249,11 +249,10 @@ export default function UploadPage() {
 
   // Today's Status audio player
   const [todayAudioUrls, setTodayAudioUrls] = useState<Record<string, string>>({});
-  const [uploadPlayingVid, setUploadPlayingVid] = useState<Video | null>(null);
+  const [uploadMemberPopup, setUploadMemberPopup] = useState<{ member: UserProfile; videos: Video[] } | null>(null);
+  const [uploadActiveVidId, setUploadActiveVidId] = useState<string | null>(null);
   const uploadAudioRef = useRef<HTMLAudioElement>(null);
   const [uploadAudioPlaying, setUploadAudioPlaying] = useState(false);
-  const [uploadAudioTime, setUploadAudioTime] = useState(0);
-  const [uploadAudioDur, setUploadAudioDur] = useState(0);
 
   // Rating popup
   const [ratingVideoId, setRatingVideoId] = useState<string | null>(null);
@@ -407,6 +406,17 @@ export default function UploadPage() {
   useEffect(() => { fetchTodayVids(); }, [fetchTodayVids]);
   useEffect(() => { fetchMonthData(); }, [fetchMonthData]);
 
+  // Reload upload audio when selection changes
+  useEffect(() => {
+    if (!uploadActiveVidId) return;
+    const el = uploadAudioRef.current;
+    if (!el) return;
+    el.pause();
+    el.src = todayAudioUrls[uploadActiveVidId] ?? "";
+    el.load();
+    setUploadAudioPlaying(false);
+  }, [uploadActiveVidId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const getAudioDuration = (file: File): Promise<number | null> =>
     new Promise(resolve => {
       const audio = document.createElement("audio");
@@ -464,7 +474,12 @@ export default function UploadPage() {
     }
   };
 
-  const todayVidByUser = new Map(todayVids.map(v => [v.user_id, v]));
+  const todayVidsByUser = new Map<string, Video[]>();
+  todayVids.forEach(v => {
+    const arr = todayVidsByUser.get(v.user_id) ?? [];
+    arr.push(v);
+    todayVidsByUser.set(v.user_id, arr);
+  });
   const todayUploaderIds = new Set(todayVids.map(v => v.user_id));
   const todayJoined = members.filter(m => todayUploaderIds.has(m.id));
   const todayMissed = members.filter(m => !todayUploaderIds.has(m.id));
@@ -581,20 +596,24 @@ export default function UploadPage() {
         ) : (
           <div className="flex flex-col sm:grid sm:grid-cols-2 gap-3">
             {todayJoined.map(m => {
-              const vid = todayVidByUser.get(m.id);
-              const dur = vid ? fmtDuration(vid.duration_seconds) : null;
-              const uploadedAt = vid ? fmtUploadTime(vid.created_at) : null;
+              const vids = todayVidsByUser.get(m.id) ?? [];
+              const latest = vids[vids.length - 1];
+              const dur = latest ? fmtDuration(latest.duration_seconds) : null;
+              const uploadedAt = latest ? fmtUploadTime(latest.created_at) : null;
               return (
                 <button key={m.id} type="button"
-                  onClick={() => { if (vid) { setUploadPlayingVid(vid); setUploadAudioPlaying(false); setUploadAudioTime(0); setUploadAudioDur(0); } }}
+                  onClick={() => { setUploadMemberPopup({ member: m, videos: vids }); setUploadActiveVidId(vids[0]?.id ?? null); setUploadAudioPlaying(false); }}
                   className="flex items-center gap-3 rounded-xl border border-green-400/20 bg-green-400/5 px-4 py-3 text-left w-full hover:bg-green-400/10 hover:border-green-400/30 transition-all">
                   <Avatar user={m} size={32} />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-white truncate">{displayName(m)}</p>
-                    <p className="text-[11px] text-green-400 font-medium">Uploaded ✓</p>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="text-[11px] text-green-400 font-medium">Uploaded ✓</p>
+                      {vids.length > 1 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full border border-purple-400/30 bg-purple-400/10" style={{ color: "#c084fc" }}>{vids.length} recordings</span>}
+                    </div>
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
-                    <Stars rating={vid?.rating ?? null} />
+                    <Stars rating={latest?.rating ?? null} />
                     {dur && (
                       <span className="text-[11px] font-semibold text-white/70 flex items-center gap-1">
                         <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -786,36 +805,49 @@ export default function UploadPage() {
       )}
 
       {/* ── Today's Status Audio Player Popup ───────────────────────── */}
-      {uploadPlayingVid && (() => {
-        const url = todayAudioUrls[uploadPlayingVid.id] ?? "";
-        const u   = uploadPlayingVid.users as UserProfile | undefined;
+      {uploadMemberPopup && (() => {
+        const { member, videos: popVids } = uploadMemberPopup;
+        const closePopup = () => { setUploadMemberPopup(null); setUploadActiveVidId(null); uploadAudioRef.current?.pause(); setUploadAudioPlaying(false); };
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ animation: "fadeIn 0.15s ease-out" }}>
-            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => { setUploadPlayingVid(null); uploadAudioRef.current?.pause(); }} />
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={closePopup} />
             <div className="relative w-full max-w-sm rounded-2xl border border-gray-700/60 bg-gray-950 shadow-2xl p-6 flex flex-col gap-4"
               style={{ animation: "slideDown 0.2s ease-out" }}>
-              <audio ref={uploadAudioRef} src={url} preload="metadata"
-                onTimeUpdate={() => setUploadAudioTime(uploadAudioRef.current?.currentTime ?? 0)}
-                onLoadedMetadata={() => { const d = uploadAudioRef.current?.duration ?? 0; if (isFinite(d) && d > 0) setUploadAudioDur(d); }}
-                onDurationChange={() => { const d = uploadAudioRef.current?.duration ?? 0; if (isFinite(d) && d > 0) setUploadAudioDur(d); }}
-                onEnded={() => setUploadAudioPlaying(false)} />
+              <audio ref={uploadAudioRef} preload="metadata" onEnded={() => setUploadAudioPlaying(false)} />
+
+              {/* Header */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  {u && <Avatar user={u} size={36} />}
-                  <div>
-                    <p className="text-sm font-bold text-white">{u ? displayName(u) : "Unknown"}</p>
-                    <p className="text-[11px]" style={{ color: "#6b7280" }}>
-                      {uploadPlayingVid.duration_seconds ? fmtTime(uploadPlayingVid.duration_seconds) : ""}
-                    </p>
-                  </div>
+                  <Avatar user={member} size={36} />
+                  <p className="text-sm font-bold text-white">{displayName(member)}</p>
                 </div>
-                <button type="button" onClick={() => { setUploadPlayingVid(null); uploadAudioRef.current?.pause(); }}
-                  className="text-gray-600 hover:text-white transition-colors">
+                <button type="button" onClick={closePopup} className="text-gray-600 hover:text-white transition-colors">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
                   </svg>
                 </button>
               </div>
+
+              {/* Recording list */}
+              <div className="flex flex-col gap-2">
+                {popVids.map((vid, i) => (
+                  <button key={vid.id} type="button"
+                    onClick={() => { if (uploadActiveVidId !== vid.id) { setUploadActiveVidId(vid.id); setUploadAudioPlaying(false); } }}
+                    className={`flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all text-left ${uploadActiveVidId === vid.id ? "border-yellow-400/40 bg-yellow-400/10" : "border-gray-700/40 bg-gray-900/40 hover:border-gray-600/60"}`}>
+                    <div className="flex items-center gap-2">
+                      <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${uploadActiveVidId === vid.id ? "bg-yellow-400" : "bg-gray-600"}`} />
+                      <div>
+                        <p className="text-xs font-semibold text-white">Recording {i + 1}</p>
+                        <p className="text-[10px]" style={{ color: "#6b7280" }}>
+                          {fmtUploadTime(vid.created_at)} KST{vid.duration_seconds ? ` · ${fmtTime(vid.duration_seconds)}` : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <Stars rating={vid.rating} />
+                  </button>
+                ))}
+              </div>
+
               <SeekBar audioRef={uploadAudioRef} />
               <div className="flex items-center justify-center gap-4">
                 <button type="button" onClick={() => { if (uploadAudioRef.current) uploadAudioRef.current.currentTime = Math.max(0, uploadAudioRef.current.currentTime - 10); }}
